@@ -120,22 +120,14 @@ fn mint(
     // 例如，调用合约的 mint
     let instruction_data: Vec<u8> = borsh::to_vec(&TokenInstruction::Mint { amount }).unwrap();
 
-    // 传这六个项目
-    //     let mint_account = next_account_info(account_iter)?;
-    //     let associated_token_account = next_account_info(account_iter)?;
-    //     let rent_sysvar = next_account_info(account_iter)?;
-    //     let payer = next_account_info(account_iter)?;
-    //     let system_program = next_account_info(account_iter)?;
-    //     let token_program = next_account_info(account_iter)?;
-    //     let associated_token_program = next_account_info(account_iter)?;
-
     let accounts: Vec<AccountMeta> = vec![
-        AccountMeta::new(mint_account.pubkey(), true),
-        AccountMeta::new_readonly(*mint_authority, false),
-        AccountMeta::new_readonly(payer.pubkey(), true),
-        AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // 可传可不传
-        AccountMeta::new_readonly(spl_token::id(), false),
-        AccountMeta::new_readonly(spl_associated_token_account::id(), false),
+        AccountMeta::new(mint_account.pubkey(), true), // Mint账户
+        AccountMeta::new(ata_account, false),          // ATA账户 (添加)
+        AccountMeta::new_readonly(sysvar::rent::id(), false), // 租金系统变量 (添加)
+        AccountMeta::new_readonly(payer.pubkey(), true), // 支付账户
+        AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // 系统程序
+        AccountMeta::new_readonly(spl_token::id(), false), // Token程序
+        AccountMeta::new_readonly(spl_associated_token_account::id(), false), // ATA程序
     ];
 
     // 创建指令
@@ -164,4 +156,62 @@ fn mint(
         mint_account.pubkey()
     );
     Ok(())
+}
+
+#[test]
+fn check_token_balance() {
+    let rpc_client = RpcClient::new("http://127.0.0.1:8899".to_string());
+
+    // 使用测试中生成的地址
+    let mint_account = Pubkey::from_str("BKSxNFXEkT99cc3ah8ALguSck2GpCz1j3vqkMoE9BJ7P").unwrap();
+    let ata_account = Pubkey::from_str("32cVBcs5GGAv2ad92gDxv8j9dqnqdth9665X5Qp2tmof").unwrap();
+
+    // 查看Mint账户信息
+    match rpc_client.get_account(&mint_account) {
+        Ok(account) => {
+            println!("Mint账户信息:");
+            println!("  Owner: {}", account.owner);
+            println!("  Lamports: {}", account.lamports);
+            println!("  Data length: {}", account.data.len());
+        }
+        Err(e) => println!("获取Mint账户信息失败: {}", e),
+    }
+
+    // 查看ATA账户信息
+    match rpc_client.get_account(&ata_account) {
+        Ok(account) => {
+            println!("\nATA账户信息:");
+            println!("  Owner: {}", account.owner);
+            println!("  Lamports: {}", account.lamports);
+            println!("  Data length: {}", account.data.len());
+
+            // 如果账户存在且有数据，说明Token账户已创建
+            if account.data.len() > 0 {
+                println!("  ✅ Token账户已创建");
+            }
+        }
+        Err(e) => println!("获取ATA账户信息失败: {}", e),
+    }
+
+    // 尝试获取Token余额
+    match rpc_client.get_token_account_balance(&ata_account) {
+        Ok(balance) => {
+            println!("\n🎉 Token余额信息:");
+            println!("  数量: {}", balance.amount);
+            println!("  小数位数: {}", balance.decimals);
+            println!("  UI数量: {}", balance.ui_amount_string);
+        }
+        Err(e) => println!("获取Token余额失败: {}", e),
+    }
+
+    // 获取Mint供应量信息
+    match rpc_client.get_token_supply(&mint_account) {
+        Ok(supply) => {
+            println!("\n📊 Token供应量信息:");
+            println!("  总供应量: {}", supply.amount);
+            println!("  小数位数: {}", supply.decimals);
+            println!("  UI供应量: {}", supply.ui_amount_string);
+        }
+        Err(e) => println!("获取Token供应量失败: {}", e),
+    }
 }
